@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bitovi/figma-mcp-proxy/util"
 )
 
 type MCPRequestBody struct {
@@ -37,12 +39,30 @@ func main() {
 	proxyRequestToTarget := proxy.Director
 
 	proxy.Director = func(req *http.Request) {
-		// Store the original request body before it gets consumed
+		var rpcReq MCPRequestBody
 		if req.Body != nil {
 			requestBody, err := readBody(req.Body)
 			if err != nil {
 				log.Printf("[PROXY] Error reading request body in Director: %v", err)
 			} else {
+				if err := json.Unmarshal([]byte(requestBody), &rpcReq); err != nil {
+					log.Printf("[PROXY] Error unmarshalling request body: %v", err)
+				} else {
+					// if arguments contains fileKey and fileName, open the Figma design
+					if params, ok := rpcReq.Params.(map[string]interface{}); ok {
+						if arguments, exists := params["arguments"]; exists {
+							if argsMap, ok := arguments.(map[string]interface{}); ok {
+								fileKey, fileKeyExists := argsMap["fileKey"].(string)
+								fileName, fileNameExists := argsMap["fileName"].(string)
+								if fileKeyExists && fileNameExists {
+									util.OpenFigmaDesign(fileKey, fileName)
+								}
+							}
+						}
+					}
+				}
+
+				// Store the original request body before it gets consumed so it can be used to modify the response later
 				req.Body = io.NopCloser(strings.NewReader(requestBody))
 				req.Header.Set("X-Original-Request-Body", requestBody)
 			}
@@ -62,7 +82,6 @@ func main() {
 			}
 		}
 
-		// log.Printf("[PROXY] for method %s with params: %+v", rpcReq.Method, rpcReq.Params)
 		if rpcReq.Method == "tools/list" {
 			// modify the response so that any tool call that has nodeId in the inputSchema.properties also takes a fileKey and fileName property
 			if resp.StatusCode == http.StatusOK {
@@ -83,9 +102,9 @@ func main() {
 					}
 				}
 				if jsonPayload == "" {
-					log.Printf("[PROXY] No JSON payload found in SSE response")
 					return nil
 				}
+
 				var responseBody map[string]interface{}
 				if err := json.Unmarshal([]byte(jsonPayload), &responseBody); err != nil {
 					log.Printf("[PROXY] Error decoding JSON payload: %v", err)
@@ -140,7 +159,9 @@ func main() {
 	// 	"clientFrameworks": "react,next.js",
 	// 	"clientLanguages": "typescript,javascript,html,css",
 	// 	"clientName": "GitHub Copilot",
-	// 	"nodeId": "1:119"
+	// 	"nodeId": "1:119",
+	// 	"fileKey": "JqWii6wYby2bPqnaaALroQ",
+	// 	"fileName": "USER-10"
 	// }
 	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
@@ -199,39 +220,4 @@ func readBody(rc io.ReadCloser) (string, error) {
 		}
 	}
 	return body, nil
-}
-
-func logRequest(description string, req *http.Request) {
-	body, err := readBody(req.Body)
-	if err != nil {
-		log.Printf("[PROXY] [%s] Error reading request body: %v", description, err)
-		return
-	}
-	req.Body = io.NopCloser(strings.NewReader(body))
-
-	log.Printf("[PROXY] [%s] %s %s%s from %s: %s",
-		description,
-		req.Method,
-		req.Host,
-		req.URL.Path,
-		req.RemoteAddr,
-		body,
-	)
-}
-
-func logResponse(description string, resp *http.Response) {
-	body, err := readBody(resp.Body)
-	if err != nil {
-		log.Printf("[PROXY] [%s] Error reading response body: %v", description, err)
-		return
-	}
-	resp.Body = io.NopCloser(strings.NewReader(body))
-
-	log.Printf("[PROXY] [%s] %s %s %d: %s",
-		description,
-		resp.Request.Method,
-		resp.Request.URL.String(),
-		resp.StatusCode,
-		body,
-	)
 }
