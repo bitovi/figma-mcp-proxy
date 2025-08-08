@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -11,6 +12,13 @@ import (
 	"strings"
 	"time"
 )
+
+type MCPRequestBody struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int         `json:"id"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+}
 
 func main() {
 	targetURL := os.Getenv("TARGET_URL")
@@ -26,10 +34,106 @@ func main() {
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
-	originalDirector := proxy.Director
+	proxyRequestToTarget := proxy.Director
+
 	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		logRequest(req)
+		// Store the original request body before it gets consumed
+		if req.Body != nil {
+			requestBody, err := readBody(req.Body)
+			if err != nil {
+				log.Printf("[PROXY] Error reading request body in Director: %v", err)
+			} else {
+				req.Body = io.NopCloser(strings.NewReader(requestBody))
+				req.Header.Set("X-Original-Request-Body", requestBody)
+			}
+		}
+
+		proxyRequestToTarget(req)
+	}
+
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Get the original request body that was stored in the Director function
+		requestBody := resp.Request.Header.Get("X-Original-Request-Body")
+
+		var rpcReq MCPRequestBody
+		if requestBody != "" {
+			if err := json.Unmarshal([]byte(requestBody), &rpcReq); err != nil {
+				log.Printf("[PROXY] Error unmarshalling request body: %v", err)
+			}
+		}
+
+		// log.Printf("[PROXY] for method %s with params: %+v", rpcReq.Method, rpcReq.Params)
+		if rpcReq.Method == "tools/list" {
+			// modify the response so that any tool call that has nodeId in the inputSchema.properties also takes a fileKey and fileName property
+			if resp.StatusCode == http.StatusOK {
+				// Read the entire response body as text
+				rawBody, err := io.ReadAll(resp.Body)
+				if err != nil {
+					log.Printf("[PROXY] Error reading response body: %v", err)
+					return err
+				}
+
+				// Try to extract JSON from SSE format (lines starting with "data: ")
+				var jsonPayload string
+				for _, line := range strings.Split(string(rawBody), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "data: ") {
+						jsonPayload = strings.TrimPrefix(line, "data: ")
+						break
+					}
+				}
+				if jsonPayload == "" {
+					log.Printf("[PROXY] No JSON payload found in SSE response")
+					return nil
+				}
+				var responseBody map[string]interface{}
+				if err := json.Unmarshal([]byte(jsonPayload), &responseBody); err != nil {
+					log.Printf("[PROXY] Error decoding JSON payload: %v", err)
+					return err
+				}
+
+				if result, ok := responseBody["result"].(map[string]interface{}); ok {
+					if tools, ok := result["tools"].([]interface{}); ok {
+						for _, tool := range tools {
+							if toolMap, ok := tool.(map[string]interface{}); ok {
+								if inputSchema, exists := toolMap["inputSchema"]; exists {
+									if inputSchemaMap, ok := inputSchema.(map[string]interface{}); ok {
+										if properties, exists := inputSchemaMap["properties"]; exists {
+											if propertiesMap, ok := properties.(map[string]interface{}); ok {
+												if _, exists := propertiesMap["nodeId"]; exists {
+													// Update the tool description to mention fileKey and fileName
+													if desc, ok := toolMap["description"].(string); ok {
+														toolMap["description"] = desc + " Use the fileKey and fileName parameters to specify a file. If a URL is provided, extract the fileKey and fileName from the URL, for example, if given the URL https://figma.com/design/1234/5678?node-id=1-2, the extracted fileKey would be `1234` and the extracted fileName would be `5678`."
+													}
+													// Update the tool properties to include fileKey and fileName
+													propertiesMap["fileKey"] = map[string]interface{}{
+														"type":        "string",
+														"description": "The key of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileKey is `1234`.",
+													}
+													propertiesMap["fileName"] = map[string]interface{}{
+														"type":        "string",
+														"description": "The name of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileName is `5678`.",
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				modifiedBody, err := json.Marshal(responseBody)
+				if err != nil {
+					log.Printf("[PROXY] Error marshalling modified response body: %v", err)
+					return err
+				}
+				resp.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("event: message\ndata: %s\n\n", modifiedBody)))
+			}
+		}
+
+		return nil
 	}
 
 	// {
@@ -39,14 +143,6 @@ func main() {
 	// 	"nodeId": "1:119"
 	// }
 	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-		// log.Printf("[MCP] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-
-		// for name, values := range r.Header {
-		// 	for _, value := range values {
-		// 		log.Printf("[MCP] Header: %s: %s", name, value)
-		// 	}
-		// }
-
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
@@ -57,6 +153,7 @@ func main() {
 
 		proxy.ServeHTTP(w, r)
 	})
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -90,10 +187,51 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
-func logRequest(req *http.Request) {
-	log.Printf("[PROXY] %s %s%s from %s",
+func readBody(rc io.ReadCloser) (string, error) {
+	var body string
+	if rc != nil {
+		b, err := io.ReadAll(rc)
+		if err == nil {
+			body = string(b)
+			rc.Close()
+		} else {
+			return "", err
+		}
+	}
+	return body, nil
+}
+
+func logRequest(description string, req *http.Request) {
+	body, err := readBody(req.Body)
+	if err != nil {
+		log.Printf("[PROXY] [%s] Error reading request body: %v", description, err)
+		return
+	}
+	req.Body = io.NopCloser(strings.NewReader(body))
+
+	log.Printf("[PROXY] [%s] %s %s%s from %s: %s",
+		description,
 		req.Method,
 		req.Host,
 		req.URL.Path,
-		req.RemoteAddr)
+		req.RemoteAddr,
+		body,
+	)
+}
+
+func logResponse(description string, resp *http.Response) {
+	body, err := readBody(resp.Body)
+	if err != nil {
+		log.Printf("[PROXY] [%s] Error reading response body: %v", description, err)
+		return
+	}
+	resp.Body = io.NopCloser(strings.NewReader(body))
+
+	log.Printf("[PROXY] [%s] %s %s %d: %s",
+		description,
+		resp.Request.Method,
+		resp.Request.URL.String(),
+		resp.StatusCode,
+		body,
+	)
 }
