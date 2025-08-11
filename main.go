@@ -22,6 +22,46 @@ type MCPRequestBody struct {
 	Params  interface{} `json:"params"`
 }
 
+type MCPResponse struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int         `json:"id"`
+	Result  interface{} `json:"result,omitempty"`
+	Error   interface{} `json:"error,omitempty"`
+}
+
+// handleOpenFigmaDesignTool handles the open_figma_design_file tool call directly
+func handleOpenFigmaDesignTool(w http.ResponseWriter, fileKey, fileName string, requestID int) {
+	// Try to open the Figma design
+	err := util.OpenFigmaDesign(fileKey, fileName)
+
+	var response MCPResponse
+	response.JSONRPC = "2.0"
+	response.ID = requestID
+
+	if err != nil {
+		response.Error = map[string]interface{}{
+			"code":    -32603,
+			"message": fmt.Sprintf("Failed to open Figma design: %v", err),
+		}
+	} else {
+		response.Result = map[string]interface{}{
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": fmt.Sprintf("Successfully opened Figma design file '%s/%s'", fileKey, fileName),
+				},
+			},
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("[PROXY] Error encoding response: %v", err)
+	}
+}
+
 func main() {
 	targetURL := os.Getenv("TARGET_URL")
 	if targetURL == "" {
@@ -47,19 +87,6 @@ func main() {
 			} else {
 				if err := json.Unmarshal([]byte(requestBody), &rpcReq); err != nil {
 					log.Printf("[PROXY] Error unmarshalling request body: %v", err)
-				} else {
-					// if arguments contains fileKey and fileName, open the Figma design
-					if params, ok := rpcReq.Params.(map[string]interface{}); ok {
-						if arguments, exists := params["arguments"]; exists {
-							if argsMap, ok := arguments.(map[string]interface{}); ok {
-								fileKey, fileKeyExists := argsMap["fileKey"].(string)
-								fileName, fileNameExists := argsMap["fileName"].(string)
-								if fileKeyExists && fileNameExists {
-									util.OpenFigmaDesign(fileKey, fileName)
-								}
-							}
-						}
-					}
 				}
 
 				// Store the original request body before it gets consumed so it can be used to modify the response later
@@ -83,7 +110,7 @@ func main() {
 		}
 
 		if rpcReq.Method == "tools/list" {
-			// modify the response so that any tool call that has nodeId in the inputSchema.properties also takes a fileKey and fileName property
+			// Add the open_figma_design_file tool to the response
 			if resp.StatusCode == http.StatusOK {
 				// Read the entire response body as text
 				rawBody, err := io.ReadAll(resp.Body)
@@ -113,33 +140,28 @@ func main() {
 
 				if result, ok := responseBody["result"].(map[string]interface{}); ok {
 					if tools, ok := result["tools"].([]interface{}); ok {
-						for _, tool := range tools {
-							if toolMap, ok := tool.(map[string]interface{}); ok {
-								if inputSchema, exists := toolMap["inputSchema"]; exists {
-									if inputSchemaMap, ok := inputSchema.(map[string]interface{}); ok {
-										if properties, exists := inputSchemaMap["properties"]; exists {
-											if propertiesMap, ok := properties.(map[string]interface{}); ok {
-												if _, exists := propertiesMap["nodeId"]; exists {
-													// Update the tool description to mention fileKey and fileName
-													if desc, ok := toolMap["description"].(string); ok {
-														toolMap["description"] = desc + " Use the fileKey and fileName parameters to specify a file. If a URL is provided, extract the fileKey and fileName from the URL, for example, if given the URL https://figma.com/design/1234/5678?node-id=1-2, the extracted fileKey would be `1234` and the extracted fileName would be `5678`."
-													}
-													// Update the tool properties to include fileKey and fileName
-													propertiesMap["fileKey"] = map[string]interface{}{
-														"type":        "string",
-														"description": "The key of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileKey is `1234`.",
-													}
-													propertiesMap["fileName"] = map[string]interface{}{
-														"type":        "string",
-														"description": "The name of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileName is `5678`.",
-													}
-												}
-											}
-										}
-									}
-								}
-							}
+						// Add the new open_figma_design_file tool
+						openFigmaDesignTool := map[string]interface{}{
+							"name":        "open_figma_design_file",
+							"description": `Opens a Figma design file using the fileKey and fileName parameters. Use this tool to open a specific Figma design file. If a URL is provided, extract the fileKey and fileName from the URL. For example, if given the URL https://www.figma.com/design/JqWii6wYby2bPqnaaALroQ/USER-10?node-id=1-82, the extracted fileKey would be "JqWii6wYby2bPqnaaALroQ" and the extracted fileName would be "USER-10".`,
+							"inputSchema": map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"fileKey": map[string]interface{}{
+										"type":        "string",
+										"description": `The key of the file, extracted from the URL. For example, in https://www.figma.com/design/JqWii6wYby2bPqnaaALroQ/USER-10?node-id=1-82, the fileKey is "JqWii6wYby2bPqnaaALroQ".`,
+									},
+									"fileName": map[string]interface{}{
+										"type":        "string",
+										"description": `The name of the file, extracted from the URL. For example, in https://www.figma.com/design/JqWii6wYby2bPqnaaALroQ/USER-10?node-id=1-82, the fileName is "USER-10".`,
+									},
+								},
+							},
 						}
+
+						// Add the new tool to the tools array
+						tools = append(tools, openFigmaDesignTool)
+						result["tools"] = tools
 					}
 				}
 
@@ -155,19 +177,34 @@ func main() {
 		return nil
 	}
 
-	// {
-	// 	"clientFrameworks": "react,next.js",
-	// 	"clientLanguages": "typescript,javascript,html,css",
-	// 	"clientName": "GitHub Copilot",
-	// 	"nodeId": "1:119",
-	// 	"fileKey": "JqWii6wYby2bPqnaaALroQ",
-	// 	"fileName": "USER-10"
-	// }
 	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
 				log.Printf("[MCP] %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, string(body))
+
+				// Check if this is a tools/call request for open_figma_design_file
+				var rpcReq MCPRequestBody
+				if err := json.Unmarshal(body, &rpcReq); err == nil {
+					if rpcReq.Method == "tools/call" {
+						if params, ok := rpcReq.Params.(map[string]interface{}); ok {
+							if name, exists := params["name"]; exists && name == "open_figma_design_file" {
+								if arguments, exists := params["arguments"]; exists {
+									if argsMap, ok := arguments.(map[string]interface{}); ok {
+										fileKey, fileKeyExists := argsMap["fileKey"].(string)
+										fileName, fileNameExists := argsMap["fileName"].(string)
+										if fileKeyExists && fileNameExists {
+											// Handle the tool call directly and return response
+											handleOpenFigmaDesignTool(w, fileKey, fileName, rpcReq.ID)
+											return
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
 				r.Body = io.NopCloser(strings.NewReader(string(body)))
 			}
 		}
