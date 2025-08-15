@@ -122,16 +122,30 @@ func main() {
 												if _, exists := propertiesMap["nodeId"]; exists {
 													// Update the tool description to mention fileKey and fileName
 													if desc, ok := toolMap["description"].(string); ok {
-														toolMap["description"] = desc + " Use the fileKey and fileName parameters to specify a file. If a URL is provided, extract the fileKey and fileName from the URL, for example, if given the URL https://figma.com/design/1234/5678?node-id=1-2, the extracted fileKey would be `1234` and the extracted fileName would be `5678`."
+														toolMap["description"] = "MANDATORY: This tool requires THREE parameters when using nodeId: nodeId, fileKey, and fileName. " + desc + " CRITICAL: You MUST provide fileKey and fileName along with nodeId - the tool will fail without all three. Extract from Figma URL (e.g., https://figma.com/design/ABC123/MyFile?node-id=1-2): fileKey='ABC123', fileName='MyFile'. DO NOT call this tool with only nodeId."
 													}
+
 													// Update the tool properties to include fileKey and fileName
 													propertiesMap["fileKey"] = map[string]interface{}{
 														"type":        "string",
-														"description": "The key of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileKey is `1234`.",
+														"description": "MANDATORY REQUIRED parameter - tool will fail without this. Extract the fileKey from Figma URL. From https://figma.com/design/ABC123/MyFile?node-id=1-2, use 'ABC123'. Always required when nodeId is used.",
 													}
+
 													propertiesMap["fileName"] = map[string]interface{}{
 														"type":        "string",
-														"description": "The name of the file, extracted from the URL. For example, in https://figma.com/design/1234/5678?node-id=1-2, the fileName is `5678`.",
+														"description": "MANDATORY REQUIRED parameter - tool will fail without this. Extract the fileName from Figma URL. From https://figma.com/design/ABC123/MyFile?node-id=1-2, use 'MyFile'. Always required when nodeId is used.",
+													}
+
+													// Add fileKey and fileName to required array
+													if required, exists := inputSchemaMap["required"]; exists {
+														if requiredArray, ok := required.([]interface{}); ok {
+															// Add to existing required array
+															requiredArray = append(requiredArray, "fileKey", "fileName")
+															inputSchemaMap["required"] = requiredArray
+														}
+													} else {
+														// Create new required array
+														inputSchemaMap["required"] = []string{"nodeId", "fileKey", "fileName"}
 													}
 												}
 											}
@@ -155,14 +169,6 @@ func main() {
 		return nil
 	}
 
-	// {
-	// 	"clientFrameworks": "react,next.js",
-	// 	"clientLanguages": "typescript,javascript,html,css",
-	// 	"clientName": "GitHub Copilot",
-	// 	"nodeId": "1:119",
-	// 	"fileKey": "JqWii6wYby2bPqnaaALroQ",
-	// 	"fileName": "USER-10"
-	// }
 	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
