@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bitovi/figma-mcp-proxy/util"
@@ -21,6 +22,8 @@ type MCPRequestBody struct {
 	Method  string      `json:"method"`
 	Params  interface{} `json:"params"`
 }
+
+var designFileMutex sync.Mutex
 
 func main() {
 	targetURL := os.Getenv("TARGET_URL")
@@ -55,6 +58,9 @@ func main() {
 								fileKey, fileKeyExists := argsMap["fileKey"].(string)
 								fileName, fileNameExists := argsMap["fileName"].(string)
 								if fileKeyExists && fileNameExists {
+									// ensure a new design file is not opened until proxyRequestToTarget has completed
+									designFileMutex.Lock()
+									defer designFileMutex.Unlock()
 									util.OpenFigmaDesign(fileKey, fileName)
 								}
 							}
