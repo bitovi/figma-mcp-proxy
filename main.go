@@ -42,6 +42,18 @@ func main() {
 	proxyRequestToTarget := proxy.Director
 
 	proxy.Director = func(req *http.Request) {
+		externalDNSName := os.Getenv("EXTERNAL_DNS_NAME")
+		if externalDNSName != "" {
+			remote, err := url.Parse(externalDNSName)
+			if err != nil {
+				log.Fatalf("Failed to parse remote URL: %v", err)
+			}
+
+			req.URL.Scheme = remote.Scheme
+			req.URL.Host = remote.Host
+			req.Host = req.Header.Get("X-Forwarded-Host")
+		}
+
 		var rpcReq MCPRequestBody
 		if req.Body != nil {
 			requestBody, err := readBody(req.Body)
