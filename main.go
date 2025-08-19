@@ -69,11 +69,13 @@ func main() {
 							if argsMap, ok := arguments.(map[string]interface{}); ok {
 								fileKey, fileKeyExists := argsMap["fileKey"].(string)
 								fileName, fileNameExists := argsMap["fileName"].(string)
-								if fileKeyExists && fileNameExists {
+								nodeId, nodeIdExists := argsMap["nodeId"].(string)
+
+								if fileKeyExists && fileNameExists && nodeIdExists {
 									// ensure a new design file is not opened until proxyRequestToTarget has completed
 									designFileMutex.Lock()
 									defer designFileMutex.Unlock()
-									util.OpenFigmaDesign(fileKey, fileName)
+									util.OpenFigmaDesign(fileKey, fileName, nodeId)
 								}
 							}
 						}

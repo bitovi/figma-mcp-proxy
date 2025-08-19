@@ -5,14 +5,19 @@ import (
 	"log"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 )
+
+func escapeColonsForFigma(nodeId string) string {
+	return strings.ReplaceAll(nodeId, ":", "-")
+}
 
 // OpenFigmaDesign opens a Figma design document using the figma:// URL scheme
 // On macOS: uses "open figma://design/{fileKey}/{fileName}"
 // On Windows: uses "Start-Process figma://design/{fileKey}/{fileName}"
-func OpenFigmaDesign(fileKey, fileName string) error {
-	figmaURL := fmt.Sprintf("figma://design/%s/%s", fileKey, fileName)
+func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
+	figmaURL := fmt.Sprintf("figma://design/%s/%s?node-id=%s", fileKey, fileName, escapeColonsForFigma(nodeId))
 
 	var cmd *exec.Cmd
 
@@ -35,7 +40,7 @@ func OpenFigmaDesign(fileKey, fileName string) error {
 	// sleep for 2 seconds to allow Figma to launch before any subsequent commands
 	time.Sleep(2 * time.Second)
 
-	log.Printf("[OSUTIL] Successfully opened Figma design '%s/%s'", fileKey, fileName)
+	log.Printf("[OSUTIL] Successfully opened Figma design '%s'", figmaURL)
 	return nil
 }
 
