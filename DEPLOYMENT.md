@@ -75,7 +75,7 @@ git clone https://github.com/bitovi/figma-mcp-proxy.git
 From the `figma-mcp-proxy` directory:
 
 ```sh
-$env:EXTERNAL_DNS_NAME='figma-mcp-load-balancer-1597143317.us-east-1.elb.amazonaws.com'; & go run main.go
+$env:EXTERNAL_DNS_NAME='<load balancer URL>'; & go run main.go
 ```
 
 
