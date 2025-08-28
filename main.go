@@ -187,7 +187,15 @@ func main() {
 		return nil
 	}
 
+	var apiKey = os.Getenv("API_KEY")
 	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if apiKey != "" {
+			if authHeader := r.Header.Get("Authorization"); authHeader != fmt.Sprintf("Bearer %s", apiKey) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
