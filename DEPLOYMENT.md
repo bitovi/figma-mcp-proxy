@@ -3,30 +3,49 @@
 
 ## 1. Create a Security Group
 
-TODO
+Inbound Rules
+- HTTP, Port 80, 0.0.0.0/0
+Outbound Rules
+- All traffic, 0.0.0.0/0
 
 ## 2. Create a Target Group
 
-TODO
+- TCP
+- Port 3846
 
-## 3. Create a Load Balancer
+## 3. Create an API Key
 
-TODO
+```sh
+openssl rand -hex 32
+```
+
+## 4. Create a Network Load Balancer (NLB)
+
+This will handle IP-based sticky sessions, meaning that consecutive requests from the same IP address will be routed to the same EC2 instance.
+This is necessary for the MCP protocol to function correctly.
+
+- Network load balancer
+- Internet-facing
+- Listener
+  - TCP:80 -> Target Group created in step 2
+- Security Group from Step 1
 
 ## 4. Create an RSA Key Pair
 
-TODO
+```sh
+openssl genrsa -out test_key.pem 2048
+```
 
 ## 5. Create an EC2 Instance
 
 1. Windows
 1. AMI = Microsoft Windows Server 2025 Base
-1. Key Pair created above
+1. Key Pair created in step 4
 1. t3.medium
 1. Create Security Group
     1. Inbound Rules
         1. RDP from your IP
-        1. HTTP to port 3846 from Security Group created in `Step 1`
+        1. HTTP to port 3846 from Security Group created in Step 1
     1. Outbound Roles
         1. All Traffic -> 0.0.0.0/0
 
@@ -75,12 +94,18 @@ git clone https://github.com/bitovi/figma-mcp-proxy.git
 From the `figma-mcp-proxy` directory:
 
 ```sh
-$env:EXTERNAL_DNS_NAME='<load balancer URL>'; & go run main.go
+$env:API_KEY='<api key>' ;$env:EXTERNAL_DNS_NAME='<load balancer URL>'; & go run main.go
 ```
 
 
 ## 7.Add EC2 Instance to Target Group
 
-To start routing traffic from the ALB to this instance:
+To start routing traffic from the NLB to this instance:
 
-TODO
+1. Select Target Group
+2. Register targets
+3. Select from Available Instances
+4. Include as pending below
+5. Register pending targets
+
+# 8. Repeat steps 6 and 7 as needed
