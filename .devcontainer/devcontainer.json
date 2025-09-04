@@ -1,0 +1,26 @@
+{
+  "name": "AI Coding Agent (Node)",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/app",
+
+  "overrideCommand": true,
+  "shutdownAction": "stopCompose",
+  "runServices": ["app"],
+
+  "updateRemoteUserUID": true,
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": { "editor.formatOnSave": true }
+    }
+  },
+
+  "forwardPorts": [3845, 3846],
+  "otherPortsAttributes": { "onAutoForward": "notify" },
+}
