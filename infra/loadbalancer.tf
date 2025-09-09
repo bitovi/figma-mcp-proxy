@@ -36,6 +36,7 @@ resource "aws_lb" "app" {
   internal           = false
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = data.aws_subnets.default_subnets.ids
+  idle_timeout       = 200
 }
 
 resource "aws_lb_target_group" "app" {
@@ -64,12 +65,14 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
+    # type = "redirect"
+    # redirect {
+    #   port        = "443"
+    #   protocol    = "HTTPS"
+    #   status_code = "HTTP_301"
+    # }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
   }
 }
 
@@ -86,14 +89,26 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+resource "aws_route53_record" "app" {
+  zone_id = var.hosted_zone_id
+  name    = local.fully_qualified_name
+  type    = "A"
+
+    alias {
+      name                   = aws_lb.app.dns_name
+      zone_id                = aws_lb.app.zone_id
+      evaluate_target_health = true
+    }
+}
+
 resource "aws_route53_record" "app_ipv6" {
   zone_id = var.hosted_zone_id
-  name    = "${local.fully_qualified_name}"
+  name    = local.fully_qualified_name
   type    = "AAAA"
 
     alias {
-    name                   = aws_lb.app.dns_name
-    zone_id                = aws_lb.app.zone_id
-    evaluate_target_health = true
+      name                   = aws_lb.app.dns_name
+      zone_id                = aws_lb.app.zone_id
+      evaluate_target_health = true
     }
 }

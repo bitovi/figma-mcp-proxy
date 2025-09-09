@@ -1,9 +1,9 @@
-# Prereqs
-
+# Installation and Usage
+## Prereqs
 1. Create a Keypair using AWS EC2 Key Pairs
     - (Recommendation): Use the following naming format: figma-proxy-<client-name>-<environment>
 
-# Initialize the Terraform
+## Initialize the Terraform
 
 ```bash
 terraform init -backend-config="key=figma-mcp-proxy/<client>/terraform/staging.tfstate"
@@ -18,7 +18,7 @@ terraform apply \
     -var "private_key_path=<key-pair name>.pem"
 ```
 
-# Use the output and RDP onto the Windows machine
+## Use the output and RDP onto the Windows machine
 
 ```bash
 terraform output
@@ -27,6 +27,7 @@ terraform output -raw administrator_password
 
 1. Copy the administrator_password, if there is a trailing `%`, ignore it.
 2. Start a remote desktop connection to the instance
+    - Using the value of `public_dns`
 3. Open a terminal and run the following:
     - cd C://
     - git clone https://github.com/bitovi/figma-mcp-proxy.git
@@ -43,3 +44,10 @@ terraform output -raw administrator_password
 terraform taint aws_instance.win2025
 # Then run terraform apply as normal
 ```
+
+## I cannot connect to the windows server
+Add your IP address to the [infra/allowed_cidrs.txt](IP Allowlist)
+
+
+
+
