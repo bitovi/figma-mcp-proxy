@@ -1,0 +1,91 @@
+# ---------- Build args (optional) ----------
+ARG APP_URL=https://figma.com
+ARG APP_NAME=figma
+
+# ---------- Stage 1: Build Nativefier app ----------
+FROM node:20-bookworm-slim AS nativefier-builder
+ARG APP_URL
+ARG APP_NAME
+ENV APP_URL=${APP_URL} APP_NAME=${APP_NAME}
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install -g nativefier
+
+WORKDIR /build
+RUN mkdir -p /build/out \
+ && nativefier "${APP_URL}" --name "${APP_NAME}" --single-instance --honest --platform linux --out /build/out \
+ && mv /build/figma-linux-arm64 /build/out/app
+
+# ---------- Stage 2: Build Go proxy ----------
+FROM golang:1.22-bookworm AS go-builder
+# If the repo is private, use SSH and docker build --ssh; otherwise HTTPS is simpler:
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# Public HTTPS clone (change to your fork if needed)
+RUN git clone https://github.com/bitovi/figma-mcp-proxy.git .
+# Build a static binary so it runs cleanly in the Debian runtime
+ENV CGO_ENABLED=0
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -o /out/figma-mcp-proxy .
+
+# ---------- Stage 3: Runtime (Debian + Electron deps) ----------
+FROM debian:bookworm-slim
+
+# Electron/Chromium runtime deps for Nativefier apps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgdk-pixbuf-2.0-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    libxshmfence1 \
+    libgl1 \
+    libgl1-mesa-dri \
+    dumb-init \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy the built Nativefier app and Go proxy
+COPY --from=nativefier-builder /build/out/app /opt/figma/app
+COPY --from=go-builder /out/figma-mcp-proxy /usr/local/bin/figma-mcp-proxy
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /opt/figma
+USER appuser
+WORKDIR /home/appuser
+COPY --chown=1000:1000 entrypoint.sh /home/appuser/entrypoint.sh
+RUN chmod +x /home/appuser/entrypoint.sh
+
+# Expose Go proxy ports (adjust if your proxy uses different ports)
+EXPOSE 3845 3846
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["/home/appuser/entrypoint.sh"]

@@ -1,8 +1,28 @@
 services:
-  app:
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - API_KEY=<FIGMA_API_KEY>
+  #     - EXTERNAL_DNS_NAME=localhost
+  #   ports:
+  #     - "3846:3846"
+  # figma:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.figma
+  #   environment:
+  #     - DISPLAY=host.docker.internal:0
+  #   ports:
+  #     - "3845:3845"
+  figma-proxy:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.figma-proxy
+    environment:
+      - API_KEY=<FIGMA_API_KEY>
+      - DISPLAY=host.docker.internal:0
+      - EXTERNAL_DNS_NAME=localhost
     ports:
-      - "3845:3845"
       - "3846:3846"
