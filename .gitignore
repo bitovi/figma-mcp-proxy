@@ -1,0 +1,12 @@
+# Security
+*.pem
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+*.tfvars.json
+.terraformrc
+terraform.rc
+*.lock.hcl
