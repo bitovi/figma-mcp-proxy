@@ -1,7 +1,7 @@
 # Installation and Usage
 ## Prereqs
 1. Create a Keypair using AWS EC2 Key Pairs
-    - (Recommendation): Use the following naming format: figma-proxy-<client-name>-<environment>
+    - (Recommendation): Use the following naming format: figma-proxy-\<client-name\>-\<environment\>
 
 ## Initialize the Terraform
 
