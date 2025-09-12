@@ -1,5 +1,5 @@
 resource "aws_security_group" "rdp" {
-  name        = "win-rdp"
+  name        = "win-rdp-${var.client_name}"
   description = "Allow RDP from my IP"
   vpc_id      = data.aws_vpc.default_vpc.id
 
@@ -20,7 +20,7 @@ resource "aws_security_group" "rdp" {
   }
 
   tags = {
-    Name = "win-rdp"
+    Name = "win-rdp-${var.client_name}"
   }
 }
 
@@ -64,7 +64,7 @@ resource "aws_instance" "win2025" {
 }
 
 resource "aws_iam_role" "ssm" {
-  name = "ec2-ssm-role"
+  name = "ec2-ssm-role-${var.client_name}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
@@ -81,7 +81,7 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 }
 
 resource "aws_iam_instance_profile" "ssm" {
-  name = "ec2-ssm-profile"
+  name = "ec2-ssm-profile-${var.client_name}"
   role = aws_iam_role.ssm.name
 }
 
