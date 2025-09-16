@@ -2,6 +2,9 @@
 
 A Go-based HTTP proxy server that enhances Model Context Protocol (MCP) tool calls by automatically adding Figma file parameters and opening Figma designs when processing tool calls.
 
+- For more information, check out the [Cascading: Cloud AI Implements Figma and Jira Usage Guide](https://bitovi.atlassian.net/wiki/spaces/AIEnabledDevelopment/pages/1517289538/Cascading+v2+Cloud+AI+implements+Figma+and+Jira).
+- Need help? Find Bitovi on [Discord](https://discord.gg/J7ejFsZnJ4) or [hire us](https://www.bitovi.com/services/ai-consulting).
+
 ## What it does
 
 This proxy acts as an intermediary between MCP clients and MCP servers, providing the following functionality:
