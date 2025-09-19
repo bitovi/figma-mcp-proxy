@@ -75,7 +75,9 @@ func main() {
 									// ensure a new design file is not opened until proxyRequestToTarget has completed
 									designFileMutex.Lock()
 									defer designFileMutex.Unlock()
-									util.OpenFigmaDesign(fileKey, fileName, nodeId)
+									if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
+										log.Printf("[PROXY] Error opening Figma design: %v", err)
+									}
 								}
 							}
 						}
