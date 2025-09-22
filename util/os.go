@@ -2,7 +2,6 @@ package util
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -40,7 +39,6 @@ func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
 	// sleep for 2 seconds to allow Figma to launch before any subsequent commands
 	time.Sleep(2 * time.Second)
 
-	log.Printf("[OSUTIL] Successfully opened Figma design '%s'", figmaURL)
 	return nil
 }
 
@@ -69,6 +67,5 @@ func OpenFigma() error {
 	// sleep for 2 seconds to allow Figma to launch before any subsequent commands
 	time.Sleep(2 * time.Second)
 
-	log.Printf("[OSUTIL] Successfully opened Figma application")
 	return nil
 }

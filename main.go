@@ -13,7 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/bitovi/figma-mcp-proxy/util"
+	"github.com/google/uuid"
 )
 
 type MCPRequestBody struct {
@@ -24,6 +27,25 @@ type MCPRequestBody struct {
 }
 
 var designFileMutex sync.Mutex
+
+type ctxKeyRequestID struct{}
+
+func withRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := uuid.New().String()
+		ctx := context.WithValue(r.Context(), ctxKeyRequestID{}, reqID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func getRequestID(r *http.Request) string {
+	if v := r.Context().Value(ctxKeyRequestID{}); v != nil {
+		if id, ok := v.(string); ok {
+			return id
+		}
+	}
+	return ""
+}
 
 func main() {
 	targetURL := os.Getenv("TARGET_URL")
@@ -58,10 +80,10 @@ func main() {
 		if req.Body != nil {
 			requestBody, err := readBody(req.Body)
 			if err != nil {
-				log.Printf("[PROXY] Error reading request body in Director: %v", err)
+				log.Printf("[%s] Error reading request body in Director: %v", getRequestID(req), err)
 			} else {
 				if err := json.Unmarshal([]byte(requestBody), &rpcReq); err != nil {
-					log.Printf("[PROXY] Error unmarshalling request body: %v", err)
+					log.Printf("[%s] Error unmarshalling request body: %v", getRequestID(req), err)
 				} else {
 					// if arguments contains fileKey and fileName, open the Figma design
 					if params, ok := rpcReq.Params.(map[string]interface{}); ok {
@@ -73,13 +95,15 @@ func main() {
 
 								if fileKeyExists && fileNameExists && nodeIdExists {
 									designFileMutex.Lock()
-									log.Printf("[PROXY] mutex LOCKED for figma://design/%s/%s?node-id=%s", fileKey, fileName, nodeId)
+									log.Printf("[%s] mutex LOCKED for figma://design/%s/%s?node-id=%s", getRequestID(req), fileKey, fileName, nodeId)
 									defer func() {
 										designFileMutex.Unlock()
-										log.Printf("[PROXY] mutex UNLOCKED for figma://design/%s/%s?node-id=%s", fileKey, fileName, nodeId)
+										log.Printf("[%s] mutex UNLOCKED for figma://design/%s/%s?node-id=%s", getRequestID(req), fileKey, fileName, nodeId)
 									}()
 									if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
-										log.Printf("[PROXY] Error opening Figma design: %v", err)
+										log.Printf("[%s] Error opening Figma design: %v", getRequestID(req), err)
+									} else {
+										log.Printf("[%s] Successfully opened Figma design: figma://design/%s/%s?node-id=%s", getRequestID(req), fileKey, fileName, nodeId)
 									}
 								}
 							}
@@ -94,7 +118,7 @@ func main() {
 		}
 
 		proxyRequestToTarget(req)
-		log.Printf("[PROXY] proxyRequestToTarget finished for %s %s", req.Method, req.URL.String())
+		log.Printf("[%s] MCP responded for %s %s", getRequestID(req), req.Method, req.URL.String())
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -104,7 +128,7 @@ func main() {
 		var rpcReq MCPRequestBody
 		if requestBody != "" {
 			if err := json.Unmarshal([]byte(requestBody), &rpcReq); err != nil {
-				log.Printf("[PROXY] Error unmarshalling request body: %v", err)
+				log.Printf("Error unmarshalling request body: %v", err)
 			}
 		}
 
@@ -114,7 +138,7 @@ func main() {
 				// Read the entire response body as text
 				rawBody, err := io.ReadAll(resp.Body)
 				if err != nil {
-					log.Printf("[PROXY] Error reading response body: %v", err)
+					log.Printf("Error reading response body: %v", err)
 					return err
 				}
 
@@ -133,7 +157,7 @@ func main() {
 
 				var responseBody map[string]interface{}
 				if err := json.Unmarshal([]byte(jsonPayload), &responseBody); err != nil {
-					log.Printf("[PROXY] Error decoding JSON payload: %v", err)
+					log.Printf("Error decoding JSON payload: %v", err)
 					return err
 				}
 
@@ -183,7 +207,7 @@ func main() {
 
 				modifiedBody, err := json.Marshal(responseBody)
 				if err != nil {
-					log.Printf("[PROXY] Error marshalling modified response body: %v", err)
+					log.Printf("Error marshalling modified response body: %v", err)
 					return err
 				}
 				resp.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("event: message\ndata: %s\n\n", modifiedBody)))
@@ -194,7 +218,7 @@ func main() {
 	}
 
 	var apiKey = os.Getenv("API_KEY")
-	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/mcp", withRequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKey != "" {
 			if authHeader := r.Header.Get("Authorization"); authHeader != fmt.Sprintf("Bearer %s", apiKey) {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -205,13 +229,13 @@ func main() {
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
-				log.Printf("[MCP] Received Request %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, string(body))
+				log.Printf("[%s] Received Request %s %s from %s: %s", getRequestID(r), r.Method, r.URL.Path, r.RemoteAddr, string(body)) // line 208
 				r.Body = io.NopCloser(strings.NewReader(string(body)))
 			}
 		}
 
 		proxy.ServeHTTP(w, r)
-	})
+	})))
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
