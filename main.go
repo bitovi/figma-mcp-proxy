@@ -72,9 +72,12 @@ func main() {
 								nodeId, nodeIdExists := argsMap["nodeId"].(string)
 
 								if fileKeyExists && fileNameExists && nodeIdExists {
-									// ensure a new design file is not opened until proxyRequestToTarget has completed
 									designFileMutex.Lock()
-									defer designFileMutex.Unlock()
+									log.Printf("[PROXY] mutex LOCKED for figma://design/%s/%s?node-id=%s", fileKey, fileName, nodeId)
+									defer func() {
+										designFileMutex.Unlock()
+										log.Printf("[PROXY] mutex UNLOCKED for figma://design/%s/%s?node-id=%s", fileKey, fileName, nodeId)
+									}()
 									if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
 										log.Printf("[PROXY] Error opening Figma design: %v", err)
 									}
@@ -91,6 +94,7 @@ func main() {
 		}
 
 		proxyRequestToTarget(req)
+		log.Printf("[PROXY] proxyRequestToTarget finished for %s %s", req.Method, req.URL.String())
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -201,7 +205,7 @@ func main() {
 		if r.Method != "GET" && r.ContentLength > 0 && r.ContentLength < 1024*1024 {
 			body, err := io.ReadAll(r.Body)
 			if err == nil {
-				log.Printf("[MCP] %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, string(body))
+				log.Printf("[MCP] Received Request %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, string(body))
 				r.Body = io.NopCloser(strings.NewReader(string(body)))
 			}
 		}
