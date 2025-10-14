@@ -79,6 +79,7 @@ func main() {
 	proxy.Director = func(req *http.Request) {
 		reqID := getRequestID(req)
 		log.Printf("[DIRECTOR] [%s] Processing request: %s %s", reqID, req.Method, req.URL.String())
+		log.Printf("[DIRECTOR] [%s] MCP Session ID: %s", reqID, req.Header.Get("Mcp-Session-Id"))
 
 		externalDNSName := os.Getenv("EXTERNAL_DNS_NAME")
 		log.Printf("[DIRECTOR] [%s] External DNS name: %q", reqID, externalDNSName)
@@ -295,6 +296,13 @@ func main() {
 
 		log.Printf("[MODIFY_RESPONSE] [%s] ModifyResponse completed", reqID)
 		return nil
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		reqID := getRequestID(r)
+		log.Printf("[ERROR_HANDLER] [%s] Proxy error for %s %s: %v", reqID, r.Method, r.URL.String(), err)
+		log.Printf("[ERROR_HANDLER] [%s] MCP Session ID: %s", reqID, r.Header.Get("Mcp-Session-Id"))
+		http.Error(w, "Proxy error: "+err.Error(), http.StatusBadGateway)
 	}
 
 	var apiKey = os.Getenv("API_KEY")
