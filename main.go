@@ -9,14 +9,18 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"context"
 
 	"github.com/bitovi/figma-mcp-proxy/util"
 	"github.com/google/uuid"
+
+	"github.com/bitovi/figma-mcp-proxy/monitor"
 )
 
 type MCPRequestBody struct {
@@ -385,8 +389,69 @@ func main() {
 	log.Printf("[MAIN] Server configured with timeouts - Read: %v, Write: %v, Idle: %v",
 		server.ReadTimeout, server.WriteTimeout, server.IdleTimeout)
 
-	log.Printf("[MAIN] Server starting to listen and serve on address: %s", server.Addr)
-	log.Fatal(server.ListenAndServe())
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Create contexts for monitors
+	ctx, cancel := context.WithCancel(context.Background())
+	pCtx, pCancel := context.WithCancel(context.Background())
+
+	// Defer cleanup functions
+	defer func() {
+		log.Printf("[MAIN] Cleaning up monitors and server...")
+		cancel()
+		pCancel()
+		ctx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("[MAIN] ERROR: Server shutdown error: %v", err)
+		} else {
+			log.Printf("[MAIN] Server shutdown completed")
+		}
+	}()
+
+	// set up figmaMonitor for Figma's MCP server
+	figmaMonitor := monitor.NewMonitor(&monitor.Config{
+		Description:  "Figma MCP",
+		MCPServerURL: targetURL + "/mcp",
+		APIKey:       apiKey,
+		Interval:     5 * time.Second,
+		Timeout:      10 * time.Second,
+		MaxRetries:   3,
+	})
+
+	// set up monitor for Proxy MCP server
+	proxyMonitor := monitor.NewMonitor(&monitor.Config{
+		Description:  "Proxy MCP",
+		MCPServerURL: "http://localhost:" + port + "/mcp",
+		APIKey:       apiKey,
+		Interval:     5 * time.Second,
+		Timeout:      10 * time.Second,
+		MaxRetries:   3,
+	})
+
+	// Start server asynchronously
+	go func() {
+		log.Printf("[MAIN] Server starting to listen and serve on address: %s", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[MAIN] ERROR: Server failed to start: %v", err)
+			sigChan <- syscall.SIGTERM
+		}
+	}()
+
+	// Start health monitors asynchronously
+	go figmaMonitor.StartMonitorLoop(ctx, func(msg string) {
+		log.Printf("[FIGMA_MONITOR] Monitor Failed: %s", msg)
+	})
+
+	go proxyMonitor.StartMonitorLoop(pCtx, func(msg string) {
+		log.Printf("[PROXY_MONITOR] Monitor Failed: %s", msg)
+	})
+
+	// Wait for shutdown signal
+	sig := <-sigChan
+	log.Printf("[MAIN] Received signal: %v, initiating graceful shutdown...", sig)
 }
 
 func readBody(rc io.ReadCloser) (string, error) {
