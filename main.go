@@ -9,14 +9,18 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"context"
 
 	"github.com/bitovi/figma-mcp-proxy/util"
 	"github.com/google/uuid"
+
+	"github.com/bitovi/figma-mcp-proxy/monitor"
 )
 
 type MCPRequestBody struct {
@@ -344,26 +348,6 @@ func main() {
 		log.Printf("[MCP_HANDLER] [%s] Request processing completed", reqID)
 	})))
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[HEALTH] Health check requested from %s", r.RemoteAddr)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := struct {
-			Status    string `json:"status"`
-			TargetURL string `json:"targetURL"`
-		}{
-			Status:    "OK",
-			TargetURL: targetURL,
-		}
-		log.Printf("[HEALTH] Responding with status OK, target URL: %s", targetURL)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Printf("[HEALTH] ERROR: Failed to encode JSON response: %v", err)
-			http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
-		} else {
-			log.Printf("[HEALTH] Health check completed successfully")
-		}
-	})
-
 	port := os.Getenv("PORT")
 	log.Printf("[MAIN] Environment variable PORT: %q", port)
 	if port == "" {
@@ -372,6 +356,78 @@ func main() {
 	} else {
 		log.Printf("[MAIN] Using PORT from environment: %s", port)
 	}
+
+	// set up figmaMonitor for Figma's MCP server
+	figmaMonitorInterval := 5 * time.Second
+	figmaMonitorTimeout := 10 * time.Second
+	figmaMonitorRetries := 3
+	figmaMonitor := monitor.NewMonitor(&monitor.Config{
+		Description:  "Figma MCP",
+		MCPServerURL: targetURL + "/mcp",
+		APIKey:       apiKey,
+		Interval:     figmaMonitorInterval,
+		Timeout:      figmaMonitorTimeout,
+		MaxRetries:   figmaMonitorRetries,
+	})
+
+	// set up monitor for Proxy MCP server
+	proxyMonitorInterval := 5 * time.Second
+	proxyMonitorTimeout := 10 * time.Second
+	proxyMonitorRetries := 3
+	proxyMonitor := monitor.NewMonitor(&monitor.Config{
+		Description:  "Proxy MCP",
+		MCPServerURL: "http://localhost:" + port + "/mcp",
+		APIKey:       apiKey,
+		Interval:     proxyMonitorInterval,
+		Timeout:      proxyMonitorTimeout,
+		MaxRetries:   proxyMonitorRetries,
+	})
+
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HEALTH] Health check requested from %s", r.RemoteAddr)
+
+		bctx := context.Background()
+
+		figmaCtx, cancel := context.WithTimeout(bctx, figmaMonitorTimeout)
+		figmaMonitorStatus := "OK"
+		defer cancel()
+		figmaMonitorStatusErr := figmaMonitor.MakeInitializeRequest(figmaCtx)
+		if figmaMonitorStatusErr != nil {
+			figmaMonitorStatus = "err: " + figmaMonitorStatusErr.Error()
+		}
+
+		proxyCtx, cancel := context.WithTimeout(bctx, proxyMonitorTimeout)
+		proxyMonitorStatus := "OK"
+		defer cancel()
+		proxyMonitorStatusErr := proxyMonitor.MakeInitializeRequest(proxyCtx)
+		if proxyMonitorStatusErr != nil {
+			proxyMonitorStatus = "err: " + proxyMonitorStatusErr.Error()
+		}
+
+		var overallStatus int
+		if figmaMonitorStatusErr == nil && proxyMonitorStatusErr == nil {
+			overallStatus = http.StatusOK
+		} else {
+			overallStatus = http.StatusServiceUnavailable
+		}
+		w.WriteHeader(overallStatus)
+
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			FigmaMCPStatus string `json:"figmaMCPStatus"`
+			ProxyMCPStatus string `json:"proxyMCPStatus"`
+		}{
+			FigmaMCPStatus: figmaMonitorStatus,
+			ProxyMCPStatus: proxyMonitorStatus,
+		}
+		log.Printf("[HEALTH] Responding with HTTP %d: %+v", overallStatus, resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("[HEALTH] ERROR: Failed to encode JSON response: %v", err)
+			http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+		} else {
+			log.Printf("[HEALTH] Health check completed successfully")
+		}
+	})
 
 	log.Printf("[MAIN] Starting server on port %s", port)
 	log.Printf("[MAIN] Proxying /mcp requests to: %s", targetURL)
@@ -385,8 +441,33 @@ func main() {
 	log.Printf("[MAIN] Server configured with timeouts - Read: %v, Write: %v, Idle: %v",
 		server.ReadTimeout, server.WriteTimeout, server.IdleTimeout)
 
-	log.Printf("[MAIN] Server starting to listen and serve on address: %s", server.Addr)
-	log.Fatal(server.ListenAndServe())
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Defer cleanup functions
+	defer func() {
+		ctx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("[MAIN] ERROR: Server shutdown error: %v", err)
+		} else {
+			log.Printf("[MAIN] Server shutdown completed")
+		}
+	}()
+
+	// Start server asynchronously
+	go func() {
+		log.Printf("[MAIN] Server starting to listen and serve on address: %s", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[MAIN] ERROR: Server failed to start: %v", err)
+			sigChan <- syscall.SIGTERM
+		}
+	}()
+
+	// Wait for shutdown signal
+	sig := <-sigChan
+	log.Printf("[MAIN] Received signal: %v, initiating graceful shutdown...", sig)
 }
 
 func readBody(rc io.ReadCloser) (string, error) {
