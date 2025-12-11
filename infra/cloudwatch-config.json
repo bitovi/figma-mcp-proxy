@@ -9,6 +9,11 @@
             "name": "% Committed Bytes In Use",
             "rename": "MemoryUtilization",
             "unit": "Percent"
+          },
+          {
+            "name": "Available MBytes",
+            "rename": "MemoryAvailableMBytes",
+            "unit": "Megabytes"
           }
         ],
         "metrics_collection_interval": 60
