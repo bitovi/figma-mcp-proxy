@@ -51,3 +51,9 @@ variable "allowed_cidrs_file" {
   type        = string
   default     = "allowed_cidrs.txt"
 }
+
+variable "proxy_api_token" {
+    description = "API token for the Figma Proxy"
+    type        = string
+    sensitive   = true
+}

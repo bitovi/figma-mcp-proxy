@@ -39,3 +39,12 @@ output "fqdn" {
     description = "Fully qualified domain name for the application"
 }
 
+output "dashboard_url" {
+  description = "CloudWatch Dashboard URL"
+  value       = "https://console.aws.amazon.com/cloudwatch/home?region=us-east-2#dashboards:name=${aws_cloudwatch_dashboard.figma_mcp_proxy.dashboard_name}"
+}
+
+output "dashboard_name" {
+  description = "CloudWatch Dashboard Name"
+  value       = aws_cloudwatch_dashboard.figma_mcp_proxy.dashboard_name
+}
