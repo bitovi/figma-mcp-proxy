@@ -1,4 +1,24 @@
 {
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "C:\\figma-mcp-proxy\\logs\\stdout.log",
+            "log_group_name": "/aws/ec2/figma-proxy",
+            "log_stream_name": "{instance_id}/stdout",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "C:\\figma-mcp-proxy\\logs\\stderr.log",
+            "log_group_name": "/aws/ec2/figma-proxy",
+            "log_stream_name": "{instance_id}/stderr",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  },
   "metrics": {
     "namespace": "CWAgent",
     "aggregation_dimensions": [["InstanceId"]],
@@ -24,6 +44,11 @@
             "name": "% Free Space",
             "rename": "DiskFreeSpace",
             "unit": "Percent"
+          },
+          {
+            "name": "Free Megabytes",
+            "rename": "DiskFreeMBytes",
+            "unit": "Megabytes"
           }
         ],
         "metrics_collection_interval": 60,
