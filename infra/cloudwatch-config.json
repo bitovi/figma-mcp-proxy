@@ -5,13 +5,13 @@
         "collect_list": [
           {
             "file_path": "C:\\figma-mcp-proxy\\logs\\stdout.log",
-            "log_group_name": "/aws/ec2/figma-proxy",
+            "log_group_name": "/aws/ec2/figma-proxy-__ENVIRONMENT__",
             "log_stream_name": "{instance_id}/stdout",
             "timezone": "UTC"
           },
           {
             "file_path": "C:\\figma-mcp-proxy\\logs\\stderr.log",
-            "log_group_name": "/aws/ec2/figma-proxy",
+            "log_group_name": "/aws/ec2/figma-proxy-__ENVIRONMENT__",
             "log_stream_name": "{instance_id}/stderr",
             "timezone": "UTC"
           }
