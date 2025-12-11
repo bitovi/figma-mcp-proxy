@@ -63,7 +63,7 @@ type InitializeParams struct {
 	Capabilities map[string]any `json:"capabilities"`
 }
 
-func (m *Monitor) makeInitializeRequest(ctx context.Context) error {
+func (m *Monitor) MakeInitializeRequest(ctx context.Context) error {
 	initParams := InitializeParams{
 		ProtocolVersion: "2025-06-18",
 		Capabilities: map[string]any{
@@ -72,9 +72,14 @@ func (m *Monitor) makeInitializeRequest(ctx context.Context) error {
 				"call": true,
 			},
 		},
+		ClientInfo: struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		}{
+			Name:    "my-go-client",
+			Version: "0.1.0",
+		},
 	}
-	initParams.ClientInfo.Name = "my-go-client"
-	initParams.ClientInfo.Version = "0.1.0"
 
 	initReq := MCPRequest{
 		JSONRPC: "2.0",
@@ -94,11 +99,21 @@ func (m *Monitor) makeInitializeRequest(ctx context.Context) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 
+	if m.cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+m.cfg.APIKey)
+	}
+
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("MCP request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// mcpResp, err := io.ReadAll(resp.Body)
+	// if err != nil {
+	// 	return fmt.Errorf("Error reading response: %v\n", err)
+	// }
+	// log.Printf("[%s] MCP Response: %s", m.cfg.Description, string(mcpResp))
 
 	log.Printf("[%s] Health check successful (%s)", m.cfg.Description, resp.Status)
 	return nil
@@ -130,7 +145,7 @@ func (m *Monitor) performHealthCheck(ctx context.Context, consecutiveFailures *i
 	checkCtx, cancel := context.WithTimeout(ctx, m.cfg.Timeout)
 	defer cancel()
 
-	err := m.makeInitializeRequest(checkCtx)
+	err := m.MakeInitializeRequest(checkCtx)
 	if err == nil {
 		if *consecutiveFailures > 0 {
 			log.Printf("[%s] Health check successful after %d failures", m.cfg.Description, *consecutiveFailures)
