@@ -1,0 +1,29 @@
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "aggregation_dimensions": [["InstanceId"]],
+    "metrics_collected": {
+      "Memory": {
+        "measurement": [
+          {
+            "name": "% Committed Bytes In Use",
+            "rename": "MemoryUtilization",
+            "unit": "Percent"
+          }
+        ],
+        "metrics_collection_interval": 60
+      },
+      "LogicalDisk": {
+        "measurement": [
+          {
+            "name": "% Free Space",
+            "rename": "DiskFreeSpace",
+            "unit": "Percent"
+          }
+        ],
+        "metrics_collection_interval": 60,
+        "resources": ["*"]
+      }
+    }
+  }
+}
