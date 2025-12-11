@@ -20,7 +20,7 @@
     }
   },
   "metrics": {
-    "namespace": "CWAgent",
+    "namespace": "CWAgent/__ENVIRONMENT__",
     "aggregation_dimensions": [["InstanceId"]],
     "metrics_collected": {
       "Memory": {
