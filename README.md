@@ -38,6 +38,12 @@ The proxy can be configured using environment variables:
 - `TARGET_URL`: The MCP server to proxy requests to (default: `http://localhost:3845`)
 - `PORT`: The port to run the proxy server on (default: `3846`)
 
+## Restart the service
+1. Remote desktop into the Windows server
+2. `cd C:\figma-mcp-proxy`
+3. `git fetch; git pull` # Or change branches to the desired branch
+4. `& ".\restart.ps1"`
+
 ## Usage
 
 ### Starting the proxy

@@ -12,7 +12,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         height = 3
         properties = {
           metrics = [
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryUtilization\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryUtilization\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
           ]
           view    = "singleValue"
           region  = "us-east-2"
@@ -30,7 +30,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         properties = {
           metrics = [
             [{ expression = "(1 - (m1 / 7974)) * 100", label = "Physical RAM Used %", id = "e1" }],
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1", visible = false }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1", visible = false }]
           ]
           view    = "singleValue"
           region  = "us-east-2"
@@ -65,7 +65,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         properties = {
           metrics = [
             [{ expression = "100 - m1", label = "Disk Used %", id = "e1" }],
-            [{ expression = "SEARCH('{CWAgent,host,instance,objectname} MetricName=\"DiskFreeSpace\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1", visible = false }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,instance,objectname} MetricName=\"DiskFreeSpace\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1", visible = false }]
           ]
           view    = "singleValue"
           region  = "us-east-2"
@@ -83,7 +83,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         height = 3
         properties = {
           metrics = [
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
           ]
           view    = "singleValue"
           region  = "us-east-2"
@@ -120,7 +120,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         height = 3
         properties = {
           metrics = [
-            [{ expression = "SEARCH('{CWAgent,host,instance,objectname} MetricName=\"DiskFreeMBytes\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1" }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,instance,objectname} MetricName=\"DiskFreeMBytes\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1" }]
           ]
           view    = "singleValue"
           region  = "us-east-2"
@@ -163,7 +163,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         height = 6
         properties = {
           metrics = [
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryUtilization\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryUtilization\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -215,7 +215,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         height = 6
         properties = {
           metrics = [
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1" }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -241,7 +241,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         properties = {
           metrics = [
             [{ expression = "(1 - (m1 / 7974)) * 100", label = "Physical RAM Used %", id = "e1" }],
-            [{ expression = "SEARCH('{CWAgent,host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1", visible = false }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,objectname} MetricName=\"MemoryAvailableMBytes\" objectname=\"Memory\"', 'Average', 60)", id = "m1", visible = false }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -295,7 +295,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         properties = {
           metrics = [
             [{ expression = "100 - m1", label = "Disk Used %", id = "e1" }],
-            [{ expression = "SEARCH('{CWAgent,host,instance,objectname} MetricName=\"DiskFreeSpace\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1", visible = false }]
+            [{ expression = "SEARCH('{CWAgent/${var.target_environment},host,instance,objectname} MetricName=\"DiskFreeSpace\" objectname=\"LogicalDisk\" instance=\"C:\"', 'Average', 60)", id = "m1", visible = false }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -320,7 +320,7 @@ resource "aws_cloudwatch_dashboard" "figma_mcp_proxy" {
         width = 24
         height = 6
         properties = {
-          query   = "SOURCE '/aws/ec2/figma-proxy'\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 100"
+          query   = "SOURCE '/aws/ec2/figma-proxy-${var.target_environment}'\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 100"
           region  = "us-east-2"
           title   = "FigmaProxy Application Logs (Last 100)"
         }

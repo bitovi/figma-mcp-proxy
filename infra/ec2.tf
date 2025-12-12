@@ -138,6 +138,9 @@ resource "aws_ssm_association" "install_tools" {
         "if (!(Test-Path $cwAgentDir)) { New-Item -ItemType Directory -Force -Path $cwAgentDir }",
         "$cwConfigPath = Join-Path $cwAgentDir 'config.json'",
         "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/bitovi/figma-mcp-proxy/main/infra/cloudwatch-config.json' -OutFile $cwConfigPath",
+        "$content = Get-Content $cwConfigPath -Raw",
+        "$content = $content -replace '__ENVIRONMENT__','${var.target_environment}'",
+        "Set-Content -Path $cwConfigPath -Value $content",
         "$cwAgentCtl = Join-Path $cwAgentDir 'amazon-cloudwatch-agent-ctl.ps1'",
         "if (Test-Path $cwAgentCtl) { & $cwAgentCtl -a fetch-config -m ec2 -s -c file:$cwConfigPath }"
     ])
