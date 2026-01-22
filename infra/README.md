@@ -47,7 +47,10 @@ terraform output -raw administrator_password
 3. [Install Figma](https://www.figma.com/download/desktop/win)
     - Log in
     - Turn on Dev Mode MCP Server
-``` 
+4. Setup the Windows Server + Figma Watchdog service (keep-alive daemon)
+    `C:\figma-mcp-proxy\setup-figma-alwayson.ps1`
+5. Start the Figma Watchdog
+    `Start-ScheduledTask -TaskName 'FigmaWatchdog'`
 
 # FAQ
 ## How can I recreate the Windows Server if I need to?
