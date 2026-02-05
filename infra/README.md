@@ -39,8 +39,8 @@ terraform apply \
 
 ```bash
 terraform output
-terraform output -raw administrator_password
-terraform output -raw proxy_api_token
+echo "administrator_password = \"$(terraform output -raw administrator_password)\""
+echo "proxy_api_token = \"$(terraform output -raw proxy_api_token)\""
 ```
 
 1. Copy the administrator_password, if there is a trailing `%`, ignore it.
@@ -50,10 +50,6 @@ terraform output -raw proxy_api_token
     - Log in
     - Turn on Dev Mode MCP Server
     - **Open any Figma design file** (required for MCP server to work)
-4. Setup the Windows Server + Figma Watchdog service (keep-alive daemon)
-    `C:\figma-mcp-proxy\setup-figma-alwayson.ps1`
-5. Start the Figma Watchdog
-    `Start-ScheduledTask -TaskName 'FigmaWatchdog'`
 
 # FAQ
 ## How can I recreate the Windows Server if I need to?
