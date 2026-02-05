@@ -53,9 +53,9 @@ func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
 	}
 	log.Printf("[UTIL] Command executed successfully")
 
-	// sleep for 2 seconds to allow Figma to launch before any subsequent commands
-	log.Printf("[UTIL] Sleeping for 2 seconds to allow Figma to launch")
-	time.Sleep(2 * time.Second)
+	// sleep for 5 seconds to allow Figma to open the file
+	log.Printf("[UTIL] Sleeping for 5 seconds to allow Figma to open the file")
+	time.Sleep(5 * time.Second)
 	log.Printf("[UTIL] Sleep completed, OpenFigmaDesign finished successfully")
 
 	return nil

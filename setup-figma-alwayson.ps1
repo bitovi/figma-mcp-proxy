@@ -86,6 +86,7 @@ New-Item -ItemType Directory -Force -Path "$FigmaWorkDir\logs" | Out-Null
 $watchdogContent = @'
 # Figma Watchdog Script
 # Monitors Figma process and restarts if not running
+# NOTE: Ensure a Figma file is manually opened after setup for MCP server to work
 
 $logFile = "C:\figma\logs\watchdog.log"
 $figmaPath = 'C:\Users\Administrator\AppData\Local\Figma\app-125.11.6\Figma.exe'
