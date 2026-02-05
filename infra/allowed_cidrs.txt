@@ -1,3 +1,6 @@
 # Phil
 70.75.204.90/32
 69.249.22.46/32
+
+# Will be removed after workshop
+0.0.0.0/0
