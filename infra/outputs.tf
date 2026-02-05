@@ -48,3 +48,9 @@ output "dashboard_name" {
   description = "CloudWatch Dashboard Name"
   value       = aws_cloudwatch_dashboard.figma_mcp_proxy.dashboard_name
 }
+
+output "proxy_api_token" {
+  description = "API token for the proxy service"
+  value       = var.proxy_api_token
+  sensitive   = true
+}

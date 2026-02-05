@@ -5,6 +5,7 @@
 export CLIENT_NAME=<client name>
 export ENVIRONMENT=<staging/production>
 export AWS_REGION=us-east-2
+export API_TOKEN=<api>
 ``` 
 
 2. Create a Keypair using AWS EC2 Key Pairs
@@ -31,7 +32,7 @@ terraform apply \
     -var "hosted_zone_id=Z088938213M784NAAX7NY" \
     -var "key_name=figma-proxy-$CLIENT_NAME-$ENVIRONMENT" \
     -var "private_key_path=figma-proxy-$CLIENT_NAME-$ENVIRONMENT.pem" \
-    -var "proxy_api_token=<api token>"
+    -var "proxy_api_token=$API_TOKEN"
 ```
 
 ## Use the output and RDP onto the Windows machine
@@ -39,6 +40,7 @@ terraform apply \
 ```bash
 terraform output
 terraform output -raw administrator_password
+terraform output -raw proxy_api_token
 ```
 
 1. Copy the administrator_password, if there is a trailing `%`, ignore it.
