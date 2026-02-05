@@ -49,6 +49,7 @@ terraform output -raw proxy_api_token
 3. [Install Figma](https://www.figma.com/download/desktop/win)
     - Log in
     - Turn on Dev Mode MCP Server
+    - **Open any Figma design file** (required for MCP server to work)
 4. Setup the Windows Server + Figma Watchdog service (keep-alive daemon)
     `C:\figma-mcp-proxy\setup-figma-alwayson.ps1`
 5. Start the Figma Watchdog
