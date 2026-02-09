@@ -55,8 +55,8 @@ func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
 	}
 	log.Printf("[UTIL] Command executed successfully")
 
-	// Get delay from environment variable, default to 15 seconds for remote VMs
-	delaySeconds := 15
+	// Get delay from environment variable, default to 30 seconds for remote VMs
+	delaySeconds := 30
 	if delayEnv := os.Getenv("FIGMA_OPEN_DELAY_SECONDS"); delayEnv != "" {
 		if parsed, err := strconv.Atoi(delayEnv); err == nil && parsed > 0 {
 			delaySeconds = parsed

@@ -31,6 +31,12 @@ type MCPRequestBody struct {
 }
 
 var designFileMutex sync.Mutex
+var currentlyOpenFile struct {
+	sync.RWMutex
+	fileKey  string
+	fileName string
+	nodeId   string
+}
 
 type ctxKeyRequestID struct{}
 
@@ -130,17 +136,38 @@ func main() {
 								log.Printf("[DIRECTOR] [%s] Figma params check - fileKey: %v, fileName: %v, nodeId: %v", reqID, fileKeyExists, fileNameExists, nodeIdExists)
 
 								if fileKeyExists && fileNameExists && nodeIdExists {
-									log.Printf("[DIRECTOR] [%s] All Figma parameters present, attempting to open design: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-									designFileMutex.Lock()
-									log.Printf("[DIRECTOR] [%s] Mutex LOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-									defer func() {
-										designFileMutex.Unlock()
-										log.Printf("[DIRECTOR] [%s] Mutex UNLOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-									}()
-									if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
-										log.Printf("[DIRECTOR] [%s] ERROR: Failed to open Figma design: %v", reqID, err)
+									log.Printf("[DIRECTOR] [%s] All Figma parameters present, checking if file is already open: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+									
+									// Check if this file is already open
+									currentlyOpenFile.RLock()
+									isAlreadyOpen := currentlyOpenFile.fileKey == fileKey && 
+													 currentlyOpenFile.fileName == fileName && 
+													 currentlyOpenFile.nodeId == nodeId
+									currentlyOpenFile.RUnlock()
+									
+									if isAlreadyOpen {
+										log.Printf("[DIRECTOR] [%s] File is already open in Figma, skipping file open and delay", reqID)
 									} else {
-										log.Printf("[DIRECTOR] [%s] Successfully opened Figma design: figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+										log.Printf("[DIRECTOR] [%s] File is not currently open, will open: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+										designFileMutex.Lock()
+										log.Printf("[DIRECTOR] [%s] Mutex LOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+										defer func() {
+											designFileMutex.Unlock()
+											log.Printf("[DIRECTOR] [%s] Mutex UNLOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+										}()
+										if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
+											log.Printf("[DIRECTOR] [%s] ERROR: Failed to open Figma design: %v", reqID, err)
+										} else {
+											log.Printf("[DIRECTOR] [%s] Successfully opened Figma design: figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+											
+											// Update currently open file tracker
+											currentlyOpenFile.Lock()
+											currentlyOpenFile.fileKey = fileKey
+											currentlyOpenFile.fileName = fileName
+											currentlyOpenFile.nodeId = nodeId
+											currentlyOpenFile.Unlock()
+											log.Printf("[DIRECTOR] [%s] Updated currently open file tracker", reqID)
+										}
 									}
 								} else {
 									log.Printf("[DIRECTOR] [%s] Missing Figma parameters, skipping design open", reqID)

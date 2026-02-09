@@ -36,7 +36,7 @@ New-Item -ItemType Directory -Force -Path 'C:\figma-mcp-proxy\logs' | Out-Null
 # Register scheduled task
 $action = New-ScheduledTaskAction `
     -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Set-Location 'C:\figma-mcp-proxy'; `$env:API_KEY='$ApiKey'; `$env:EXTERNAL_DNS_NAME='$ExternalDnsName'; `$env:FIGMA_OPEN_DELAY_SECONDS='15'; .\figma-proxy.exe *>> C:\figma-mcp-proxy\logs\proxy.log 2>&1`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Set-Location 'C:\figma-mcp-proxy'; `$env:API_KEY='$ApiKey'; `$env:EXTERNAL_DNS_NAME='$ExternalDnsName'; .\figma-proxy.exe *>> C:\figma-mcp-proxy\logs\proxy.log 2>&1`"" `
     -WorkingDirectory 'C:\figma-mcp-proxy'
 
 $trigger = New-ScheduledTaskTrigger -AtStartup

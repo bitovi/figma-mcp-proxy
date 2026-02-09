@@ -26,10 +26,13 @@ When a client requests the list of available tools (`tools/list`), the proxy:
 
 When processing tool calls that include both `fileKey` and `fileName` parameters, the proxy:
 
+- Tracks which Figma file is currently open
+- Only opens a new file if it's different from the currently loaded file (skips unnecessary delays)
 - Automatically opens the specified Figma design using the system's default Figma application
 - Uses the `figma://` URL scheme to launch directly to the design
 - Supports macOS, Windows, and Linux operating systems
-- Adds a 2-second delay to allow Figma to fully launch before proceeding
+- Adds a configurable delay (default 30 seconds) to allow Figma to fully load the file before proceeding
+- **Performance**: Subsequent requests to the same file have zero delay, only different files trigger the open + delay
 
 ## Configuration
 
@@ -37,7 +40,7 @@ The proxy can be configured using environment variables:
 
 - `TARGET_URL`: The MCP server to proxy requests to (default: `http://localhost:3845`)
 - `PORT`: The port to run the proxy server on (default: `3846`)
-- `FIGMA_OPEN_DELAY_SECONDS`: Time to wait after opening a Figma file before proceeding with the tool call (default: `15` seconds). Increase this for slow remote VM scenarios where files take longer to load.
+- `FIGMA_OPEN_DELAY_SECONDS`: Time to wait after opening a Figma file before proceeding with the tool call (default: `30` seconds). Increase this for slow remote VM scenarios where files take longer to load.
 
 ## Restart the service
 
