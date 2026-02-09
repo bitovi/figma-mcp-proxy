@@ -3,8 +3,10 @@ package util
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -53,9 +55,17 @@ func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
 	}
 	log.Printf("[UTIL] Command executed successfully")
 
-	// sleep for 5 seconds to allow Figma to open the file
-	log.Printf("[UTIL] Sleeping for 5 seconds to allow Figma to open the file")
-	time.Sleep(5 * time.Second)
+	// Get delay from environment variable, default to 15 seconds for remote VMs
+	delaySeconds := 15
+	if delayEnv := os.Getenv("FIGMA_OPEN_DELAY_SECONDS"); delayEnv != "" {
+		if parsed, err := strconv.Atoi(delayEnv); err == nil && parsed > 0 {
+			delaySeconds = parsed
+			log.Printf("[UTIL] Using custom delay from FIGMA_OPEN_DELAY_SECONDS: %d seconds", delaySeconds)
+		}
+	}
+	
+	log.Printf("[UTIL] Sleeping for %d seconds to allow Figma to open the file", delaySeconds)
+	time.Sleep(time.Duration(delaySeconds) * time.Second)
 	log.Printf("[UTIL] Sleep completed, OpenFigmaDesign finished successfully")
 
 	return nil

@@ -37,6 +37,7 @@ The proxy can be configured using environment variables:
 
 - `TARGET_URL`: The MCP server to proxy requests to (default: `http://localhost:3845`)
 - `PORT`: The port to run the proxy server on (default: `3846`)
+- `FIGMA_OPEN_DELAY_SECONDS`: Time to wait after opening a Figma file before proceeding with the tool call (default: `15` seconds). Increase this for slow remote VM scenarios where files take longer to load.
 
 ## Restart the service
 
