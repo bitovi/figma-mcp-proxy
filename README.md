@@ -39,10 +39,33 @@ The proxy can be configured using environment variables:
 - `PORT`: The port to run the proxy server on (default: `3846`)
 
 ## Restart the service
+
+### Recommended: Use the restart script
 1. Remote desktop into the Windows server
-2. `cd C:\figma-mcp-proxy`
-3. `git fetch; git pull` # Or change branches to the desired branch
-4. `& ".\restart.ps1"`
+2. Open PowerShell and run:
+```powershell
+cd C:\figma-mcp-proxy
+& ".\restart.ps1"
+```
+
+This will stop the task, pull latest code, rebuild, and restart.
+
+### Manual restart (without code update)
+If you just need to restart without pulling new code:
+```powershell
+Stop-ScheduledTask -TaskName 'FigmaProxy' -ErrorAction SilentlyContinue
+Start-ScheduledTask -TaskName 'FigmaProxy'
+```
+
+### Check task status
+```powershell
+Get-ScheduledTask -TaskName 'FigmaProxy' | Get-ScheduledTaskInfo
+```
+
+### View logs
+```powershell
+Get-Content C:\figma-mcp-proxy\logs\proxy.log -Tail 50
+```
 
 ## Usage
 
