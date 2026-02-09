@@ -67,6 +67,34 @@ Get-ScheduledTask -TaskName 'FigmaProxy' | Get-ScheduledTaskInfo
 Get-Content C:\figma-mcp-proxy\logs\proxy.log -Tail 50
 ```
 
+## Troubleshooting
+
+### Figma MCP tools fail after disconnecting RDP
+
+**Problem**: Some Figma MCP tools (particularly `get_design_context`) stop working after disconnecting from the RDP session, even though Figma remains running.
+
+**Cause**: When you close RDP normally, Windows marks the session as "Disconnected", which changes how the desktop/graphics context is maintained. Figma continues running, but tools requiring an active graphics session fail.
+
+#### Solution: Automated Disconnect Script (Recommended)
+
+Instead of closing the RDP window normally, run this script before disconnecting:
+
+```powershell
+cd C:\figma-mcp-proxy
+& ".\disconnect-rdp.ps1"
+```
+
+This automatically transfers your session to the console, keeping it active.
+
+#### Manual Method
+
+If the script fails, you can manually transfer the session:
+
+1. Open Command Prompt as Administrator
+2. Run: `query session`
+3. Find your session ID (State = Active)
+4. Run: `tscon <ID> /dest:console` (e.g., `tscon 2 /dest:console`)
+
 ## Usage
 
 ### Starting the proxy
