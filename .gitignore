@@ -9,4 +9,5 @@
 *.tfvars.json
 .terraformrc
 terraform.rc
-*.lock.hcl
+*.lock.hclfigma-proxy
+figma-proxy.exe
