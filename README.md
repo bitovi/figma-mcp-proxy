@@ -22,17 +22,17 @@ When a client requests the list of available tools (`tools/list`), the proxy:
   - `fileName`: The Figma file name (extracted from the same URL format)
 - Updates tool descriptions to explain how to extract these parameters from Figma URLs
 
-### 2. Automatic Figma Design Opening
+### 2. Automatic Figma Design Opening with Smart Retry
 
-When processing tool calls that include both `fileKey` and `fileName` parameters, the proxy:
+When processing tool calls that include both `fileKey` and `fileName` parameters, the proxy uses an optimistic approach:
 
-- Tracks which Figma file is currently open
-- Only opens a new file if it's different from the currently loaded file (skips unnecessary delays)
-- Automatically opens the specified Figma design using the system's default Figma application
+- **First attempt**: Forwards the request immediately without opening any files (instant response if file already open)
+- **Error detection**: Monitors response for errors indicating the file isn't open ("No node could be found", "AppStateTsApi is null", etc.)
+- **Automatic retry**: If file-not-open error detected, opens the design and retries the request automatically
 - Uses the `figma://` URL scheme to launch directly to the design
 - Supports macOS, Windows, and Linux operating systems
-- Adds a configurable delay (default 30 seconds) to allow Figma to fully load the file before proceeding
-- **Performance**: Subsequent requests to the same file have zero delay, only different files trigger the open + delay
+- Adds a configurable delay (default 30 seconds) when opening files to ensure full load
+- **Performance**: Zero delay for files already open, only pays the time cost when switching files
 
 ## Configuration
 

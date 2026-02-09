@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,14 +32,15 @@ type MCPRequestBody struct {
 }
 
 var designFileMutex sync.Mutex
-var currentlyOpenFile struct {
-	sync.RWMutex
+
+type ctxKeyRequestID struct{}
+type ctxKeyFigmaParams struct{}
+
+type figmaParams struct {
 	fileKey  string
 	fileName string
 	nodeId   string
 }
-
-type ctxKeyRequestID struct{}
 
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,39 +138,15 @@ func main() {
 								log.Printf("[DIRECTOR] [%s] Figma params check - fileKey: %v, fileName: %v, nodeId: %v", reqID, fileKeyExists, fileNameExists, nodeIdExists)
 
 								if fileKeyExists && fileNameExists && nodeIdExists {
-									log.Printf("[DIRECTOR] [%s] All Figma parameters present, checking if file is already open: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-									
-									// Check if this file is already open
-									currentlyOpenFile.RLock()
-									isAlreadyOpen := currentlyOpenFile.fileKey == fileKey && 
-													 currentlyOpenFile.fileName == fileName && 
-													 currentlyOpenFile.nodeId == nodeId
-									currentlyOpenFile.RUnlock()
-									
-									if isAlreadyOpen {
-										log.Printf("[DIRECTOR] [%s] File is already open in Figma, skipping file open and delay", reqID)
-									} else {
-										log.Printf("[DIRECTOR] [%s] File is not currently open, will open: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-										designFileMutex.Lock()
-										log.Printf("[DIRECTOR] [%s] Mutex LOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-										defer func() {
-											designFileMutex.Unlock()
-											log.Printf("[DIRECTOR] [%s] Mutex UNLOCKED for figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-										}()
-										if err := util.OpenFigmaDesign(fileKey, fileName, nodeId); err != nil {
-											log.Printf("[DIRECTOR] [%s] ERROR: Failed to open Figma design: %v", reqID, err)
-										} else {
-											log.Printf("[DIRECTOR] [%s] Successfully opened Figma design: figma://design/%s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
-											
-											// Update currently open file tracker
-											currentlyOpenFile.Lock()
-											currentlyOpenFile.fileKey = fileKey
-											currentlyOpenFile.fileName = fileName
-											currentlyOpenFile.nodeId = nodeId
-											currentlyOpenFile.Unlock()
-											log.Printf("[DIRECTOR] [%s] Updated currently open file tracker", reqID)
-										}
-									}
+									log.Printf("[DIRECTOR] [%s] Storing Figma parameters in context for potential retry: %s/%s?node-id=%s", reqID, fileKey, fileName, nodeId)
+									// Store parameters in context for use in ModifyResponse if retry needed
+									ctx := req.Context()
+									ctx = context.WithValue(ctx, ctxKeyFigmaParams{}, &figmaParams{
+										fileKey:  fileKey,
+										fileName: fileName,
+										nodeId:   nodeId,
+									})
+									*req = *req.WithContext(ctx)
 								} else {
 									log.Printf("[DIRECTOR] [%s] Missing Figma parameters, skipping design open", reqID)
 								}
@@ -201,6 +179,86 @@ func main() {
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		reqID := getRequestID(resp.Request)
 		log.Printf("[MODIFY_RESPONSE] [%s] Processing response for %s %s (Status: %d)", reqID, resp.Request.Method, resp.Request.URL.String(), resp.StatusCode)
+
+		// Check if we have Figma parameters stored for potential retry
+		figmaParamsValue := resp.Request.Context().Value(ctxKeyFigmaParams{})
+		var params *figmaParams
+		if figmaParamsValue != nil {
+			if p, ok := figmaParamsValue.(*figmaParams); ok {
+				params = p
+				log.Printf("[MODIFY_RESPONSE] [%s] Found Figma parameters: %s/%s?node-id=%s", reqID, params.fileKey, params.fileName, params.nodeId)
+			}
+		}
+
+		// Read response body to check for errors
+		rawBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("[MODIFY_RESPONSE] [%s] ERROR: Failed to read response body: %v", reqID, err)
+			return err
+		}
+		resp.Body.Close()
+		
+		// Check if response indicates file not open (and we have params to retry)
+		if params != nil {
+			responseText := string(rawBody)
+			needsRetry := strings.Contains(responseText, "No node could be found") ||
+						  strings.Contains(responseText, "AppStateTsApi is null") ||
+						  strings.Contains(responseText, "document containing the node is the active tab")
+			
+			if needsRetry {
+				log.Printf("[MODIFY_RESPONSE] [%s] Detected file-not-open error, attempting to open file and retry", reqID)
+				
+				// Open the file with delay
+				designFileMutex.Lock()
+				log.Printf("[MODIFY_RESPONSE] [%s] Mutex LOCKED for retry figma://design/%s/%s?node-id=%s", reqID, params.fileKey, params.fileName, params.nodeId)
+				
+				if err := util.OpenFigmaDesign(params.fileKey, params.fileName, params.nodeId); err != nil {
+					designFileMutex.Unlock()
+					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: Failed to open Figma design for retry: %v", reqID, err)
+					// Return original error response
+					resp.Body = io.NopCloser(bytes.NewReader(rawBody))
+					return nil
+				}
+				designFileMutex.Unlock()
+				log.Printf("[MODIFY_RESPONSE] [%s] Mutex UNLOCKED after opening file", reqID)
+				
+				// Retry the request
+				log.Printf("[MODIFY_RESPONSE] [%s] Retrying original request after file open", reqID)
+				retryReq, err := http.NewRequest(resp.Request.Method, resp.Request.URL.String(), strings.NewReader(resp.Request.Header.Get("X-Original-Request-Body")))
+				if err != nil {
+					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: Failed to create retry request: %v", reqID, err)
+					resp.Body = io.NopCloser(bytes.NewReader(rawBody))
+					return nil
+				}
+				
+				// Copy headers
+				for key, values := range resp.Request.Header {
+					if key != "X-Original-Request-Body" && key != "X-Forwarded-Host" {
+						for _, value := range values {
+							retryReq.Header.Add(key, value)
+						}
+					}
+				}
+				
+				client := &http.Client{Timeout: 120 * time.Second}
+				retryResp, err := client.Do(retryReq)
+				if err != nil {
+					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: Retry request failed: %v", reqID, err)
+					resp.Body = io.NopCloser(bytes.NewReader(rawBody))
+					return nil
+				}
+				
+				log.Printf("[MODIFY_RESPONSE] [%s] Retry request succeeded (Status: %d)", reqID, retryResp.StatusCode)
+				
+				// Replace response with retry response
+				*resp = *retryResp
+				rawBody, _ = io.ReadAll(retryResp.Body)
+				retryResp.Body.Close()
+			}
+		}
+		
+		// Restore body for further processing
+		resp.Body = io.NopCloser(bytes.NewReader(rawBody))
 
 		// Get the original request body that was stored in the Director function
 		requestBody := resp.Request.Header.Get("X-Original-Request-Body")
