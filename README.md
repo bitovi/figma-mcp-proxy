@@ -22,17 +22,20 @@ When a client requests the list of available tools (`tools/list`), the proxy:
   - `fileName`: The Figma file name (extracted from the same URL format)
 - Updates tool descriptions to explain how to extract these parameters from Figma URLs
 
-### 2. Automatic Figma Design Opening with Smart Retry
+### 2. Automatic Figma Design Opening with Smart Retry and Verification
 
-When processing tool calls that include both `fileKey` and `fileName` parameters, the proxy uses an optimistic approach:
+When processing tool calls that include both `fileKey` and `fileName` parameters, the proxy uses an optimized approach with verification:
 
 - **First attempt**: Forwards the request immediately without opening any files (instant response if file already open)
 - **Error detection**: Monitors response for errors indicating the file isn't open ("No node could be found", "AppStateTsApi is null", etc.)
-- **Automatic retry**: If file-not-open error detected, opens the design and retries the request automatically
-- Uses the `figma://` URL scheme to launch directly to the design
+- **Automatic retry with verification**: If file-not-open error detected:
+  1. Opens the design using the `figma://` URL scheme
+  2. Waits initial delay (configurable via `FIGMA_OPEN_INITIAL_DELAY_SECONDS`, default 10 seconds)
+  3. Polls the Figma MCP server every 5 seconds to verify file is actually loaded (up to 60 seconds)
+  4. Retries the original request once verified
 - Supports macOS, Windows, and Linux operating systems
-- Adds a configurable delay (default 30 seconds) when opening files to ensure full load
-- **Performance**: Zero delay for files already open, only pays the time cost when switching files
+- **Performance**: Zero delay for files already open, adaptive waiting when switching files based on actual load time
+- **Thread-safe**: Uses mutex to prevent concurrent file opening operations
 
 ## Configuration
 
@@ -40,7 +43,8 @@ The proxy can be configured using environment variables:
 
 - `TARGET_URL`: The MCP server to proxy requests to (default: `http://localhost:3845`)
 - `PORT`: The port to run the proxy server on (default: `3846`)
-- `FIGMA_OPEN_DELAY_SECONDS`: Time to wait after opening a Figma file before proceeding with the tool call (default: `30` seconds). Increase this for slow remote VM scenarios where files take longer to load.
+- `FIGMA_OPEN_INITIAL_DELAY_SECONDS`: Initial time to wait after opening a Figma file before starting verification (default: `10` seconds). Increase this if files take longer to start loading on slow VMs.
+- `API_KEY`: Optional bearer token for authentication (if set, requires `Authorization: Bearer <token>` header)
 
 ## Restart the service
 

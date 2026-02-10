@@ -11,3 +11,4 @@
 terraform.rc
 *.lock.hclfigma-proxy
 figma-proxy.exe
+figma-proxy

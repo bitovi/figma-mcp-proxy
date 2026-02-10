@@ -32,6 +32,7 @@ type MCPRequestBody struct {
 }
 
 var designFileMutex sync.Mutex
+var targetServerURL string // Store target URL for retry requests
 
 type ctxKeyRequestID struct{}
 type ctxKeyFigmaParams struct{}
@@ -54,6 +55,74 @@ func withRequestID(next http.Handler) http.Handler {
 	})
 }
 
+// verifyFileLoaded polls the MCP server to check if a file is actually loaded and ready
+func verifyFileLoaded(fileKey, fileName, nodeId string, maxAttempts int) error {
+	log.Printf("[VERIFY] Verifying file is loaded: %s/%s?node-id=%s (max attempts: %d)", fileKey, fileName, nodeId, maxAttempts)
+	
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		log.Printf("[VERIFY] Verification attempt %d/%d", attempt, maxAttempts)
+		
+		// Create a simple test request to check if the file is ready
+		testReq := MCPRequestBody{
+			JSONRPC: "2.0",
+			ID:      999999, // Use a special ID for verification requests
+			Method:  "tools/call",
+			Params: map[string]interface{}{
+				"name": "get_metadata",
+				"arguments": map[string]interface{}{
+					"fileKey":  fileKey,
+					"fileName": fileName,
+					"nodeId":   nodeId,
+				},
+			},
+		}
+		
+		reqBody, err := json.Marshal(testReq)
+		if err != nil {
+			log.Printf("[VERIFY] ERROR: Failed to marshal verification request: %v", err)
+			return err
+		}
+		
+		// Send request to target server
+		req, err := http.NewRequest("POST", targetServerURL+"/mcp", bytes.NewReader(reqBody))
+		if err != nil {
+			log.Printf("[VERIFY] ERROR: Failed to create verification request: %v", err)
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[VERIFY] ERROR: Verification request failed: %v", err)
+			// Don't return error, just wait and retry
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		responseText := string(body)
+		
+		// Check if response indicates file is ready (no error)
+		if !strings.Contains(responseText, "No node could be found") &&
+		   !strings.Contains(responseText, "AppStateTsApi is null") &&
+		   !strings.Contains(responseText, "document containing the node is the active tab") {
+			log.Printf("[VERIFY] File verified as loaded after %d attempts", attempt)
+			return nil
+		}
+		
+		log.Printf("[VERIFY] File not ready yet (attempt %d/%d): %s", attempt, maxAttempts, responseText)
+		
+		if attempt < maxAttempts {
+			time.Sleep(5 * time.Second)
+		}
+	}
+	
+	log.Printf("[VERIFY] ERROR: File did not load after %d attempts", maxAttempts)
+	return fmt.Errorf("file did not load after %d attempts", maxAttempts)
+}
+
 func getRequestID(r *http.Request) string {
 	if v := r.Context().Value(ctxKeyRequestID{}); v != nil {
 		if id, ok := v.(string); ok {
@@ -74,6 +143,10 @@ func main() {
 	} else {
 		log.Printf("[MAIN] Using TARGET_URL from environment: %s", targetURL)
 	}
+	
+	// Store target URL in global variable for use in verification requests
+	targetServerURL = targetURL
+	log.Printf("[MAIN] Target server URL set to: %s", targetServerURL)
 
 	log.Printf("[MAIN] Parsing target URL: %s", targetURL)
 	target, err := url.Parse(targetURL)
@@ -206,21 +279,28 @@ func main() {
 						  strings.Contains(responseText, "document containing the node is the active tab")
 			
 			if needsRetry {
-				log.Printf("[MODIFY_RESPONSE] [%s] Detected file-not-open error, attempting to open file and retry", reqID)
+				log.Printf("[MODIFY_RESPONSE] [%s] Detected file-not-open error in response: %s", reqID, responseText)
+				log.Printf("[MODIFY_RESPONSE] [%s] Attempting to open file and retry", reqID)
 				
-				// Open the file with delay
+				// Lock mutex for entire retry operation to prevent concurrent file opens
 				designFileMutex.Lock()
+				defer designFileMutex.Unlock()
 				log.Printf("[MODIFY_RESPONSE] [%s] Mutex LOCKED for retry figma://design/%s/%s?node-id=%s", reqID, params.fileKey, params.fileName, params.nodeId)
 				
 				if err := util.OpenFigmaDesign(params.fileKey, params.fileName, params.nodeId); err != nil {
-					designFileMutex.Unlock()
 					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: Failed to open Figma design for retry: %v", reqID, err)
 					// Return original error response
 					resp.Body = io.NopCloser(bytes.NewReader(rawBody))
 					return nil
 				}
-				designFileMutex.Unlock()
-				log.Printf("[MODIFY_RESPONSE] [%s] Mutex UNLOCKED after opening file", reqID)
+				log.Printf("[MODIFY_RESPONSE] [%s] File open command completed, verifying file is loaded", reqID)
+				
+				// Verify file is actually loaded with polling (up to 12 attempts = 60 seconds)
+				if err := verifyFileLoaded(params.fileKey, params.fileName, params.nodeId, 12); err != nil {
+					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: File verification failed: %v", reqID, err)
+					log.Printf("[MODIFY_RESPONSE] [%s] Proceeding with retry anyway", reqID)
+					// Don't return error, try the retry anyway
+				}
 				
 				// Retry the request
 				log.Printf("[MODIFY_RESPONSE] [%s] Retrying original request after file open", reqID)
@@ -250,10 +330,16 @@ func main() {
 				
 				log.Printf("[MODIFY_RESPONSE] [%s] Retry request succeeded (Status: %d)", reqID, retryResp.StatusCode)
 				
+				// Preserve original request reference before replacing response
+				originalRequest := resp.Request
+				
 				// Replace response with retry response
 				*resp = *retryResp
 				rawBody, _ = io.ReadAll(retryResp.Body)
 				retryResp.Body.Close()
+				
+				// Restore original request so we can access X-Original-Request-Body header
+				resp.Request = originalRequest
 			}
 		}
 		
@@ -405,7 +491,7 @@ func main() {
 			authHeader := r.Header.Get("Authorization")
 			expectedAuth := fmt.Sprintf("Bearer %s", apiKey)
 			if authHeader != expectedAuth {
-				log.Printf("[MCP_HANDLER] [%s] Authentication failed - received: %q", reqID, authHeader)
+				log.Printf("[MCP_HANDLER] [%s] Authentication failed", reqID)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -519,8 +605,8 @@ func main() {
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 120 * time.Second, // Increased to handle file loading delays
 		IdleTimeout:  120 * time.Second,
 	}
 	log.Printf("[MAIN] Server configured with timeouts - Read: %v, Write: %v, Idle: %v",

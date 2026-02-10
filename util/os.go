@@ -55,18 +55,19 @@ func OpenFigmaDesign(fileKey, fileName, nodeId string) error {
 	}
 	log.Printf("[UTIL] Command executed successfully")
 
-	// Get delay from environment variable, default to 30 seconds for remote VMs
-	delaySeconds := 30
-	if delayEnv := os.Getenv("FIGMA_OPEN_DELAY_SECONDS"); delayEnv != "" {
+	// Get initial delay from environment variable, default to 10 seconds
+	// This is the minimum wait time before starting verification
+	initialDelaySeconds := 10
+	if delayEnv := os.Getenv("FIGMA_OPEN_INITIAL_DELAY_SECONDS"); delayEnv != "" {
 		if parsed, err := strconv.Atoi(delayEnv); err == nil && parsed > 0 {
-			delaySeconds = parsed
-			log.Printf("[UTIL] Using custom delay from FIGMA_OPEN_DELAY_SECONDS: %d seconds", delaySeconds)
+			initialDelaySeconds = parsed
+			log.Printf("[UTIL] Using custom initial delay from FIGMA_OPEN_INITIAL_DELAY_SECONDS: %d seconds", initialDelaySeconds)
 		}
 	}
 	
-	log.Printf("[UTIL] Sleeping for %d seconds to allow Figma to open the file", delaySeconds)
-	time.Sleep(time.Duration(delaySeconds) * time.Second)
-	log.Printf("[UTIL] Sleep completed, OpenFigmaDesign finished successfully")
+	log.Printf("[UTIL] Waiting %d seconds for Figma to begin opening file", initialDelaySeconds)
+	time.Sleep(time.Duration(initialDelaySeconds) * time.Second)
+	log.Printf("[UTIL] Initial delay completed, file should be opening now")
 
 	return nil
 }
