@@ -295,8 +295,8 @@ func main() {
 				}
 				log.Printf("[MODIFY_RESPONSE] [%s] File open command completed, verifying file is loaded", reqID)
 				
-				// Verify file is actually loaded with polling (up to 12 attempts = 60 seconds)
-				if err := verifyFileLoaded(params.fileKey, params.fileName, params.nodeId, 12); err != nil {
+				// Verify file is actually loaded with polling (up to 16 attempts = 80 seconds)
+				if err := verifyFileLoaded(params.fileKey, params.fileName, params.nodeId, 16); err != nil {
 					log.Printf("[MODIFY_RESPONSE] [%s] ERROR: File verification failed: %v", reqID, err)
 					log.Printf("[MODIFY_RESPONSE] [%s] Proceeding with retry anyway", reqID)
 					// Don't return error, try the retry anyway
